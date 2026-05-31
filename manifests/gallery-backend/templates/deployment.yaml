@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gallery-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gallery-backend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: gallery-backend
+  template:
+    metadata:
+      labels:
+        app: gallery-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      {{- if .Values.registry.enabled }}
+      imagePullSecrets:
+        - name: registry-credentials
+      {{- end }}
+      initContainers:
+        - name: wait-for-mongo
+          image: busybox
+          command: ['sh', '-c', 'until nslookup _mongodb._tcp.cluster0.ek0v84q.mongodb.net > /dev/null 2>&1; do echo waiting for mongo dns; sleep 5; done']
+      containers:
+        - name: gallery-backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 5000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "5000"
+          envFrom:
+            - secretRef:
+                name: gallery-backend-secret
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
