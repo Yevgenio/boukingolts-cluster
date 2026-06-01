@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gallery-backend
+  namespace: monitoring
+  labels:
+    app: gallery-backend
+spec:
+  namespaceSelector:
+    matchNames:
+      - gallery-backend
+  selector:
+    matchLabels:
+      app: gallery-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
