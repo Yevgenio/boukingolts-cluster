@@ -1,0 +1,5 @@
+apiVersion: v2
+name: argocd-config
+description: ArgoCD self-managed config — insecure mode + ingress
+type: application
+version: 0.1.0
