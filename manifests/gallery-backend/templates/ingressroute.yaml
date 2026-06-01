@@ -7,7 +7,9 @@ metadata:
     app: gallery-backend
 spec:
   entryPoints:
-    - web
+    - websecure
+  tls:
+    certResolver: letsencrypt
   routes:
     - match: Host(`{{ .Values.ingress.host }}`) && PathPrefix(`/api`)
       kind: Rule
