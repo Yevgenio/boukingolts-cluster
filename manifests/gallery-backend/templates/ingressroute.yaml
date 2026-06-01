@@ -11,7 +11,7 @@ spec:
   tls:
     certResolver: letsencrypt
   routes:
-    - match: Host(`{{ .Values.ingress.host }}`) && PathPrefix(`/api`)
+    - match: Host(`{{ .Values.ingress.host }}`)
       kind: Rule
       services:
         - name: gallery-backend
