@@ -18,6 +18,8 @@ spec:
         prometheusOperator:
           admissionWebhooks:
             enabled: false
+          tls:
+            enabled: false
 
         grafana:
           adminPassword: changeme
