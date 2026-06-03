@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/yevgenio/gallery-backend
   # Updated automatically by GitHub Actions on each push to main
-  tag: "d0f4526"
+  tag: "a8b4982"
   pullPolicy: Always
 
 # Set enabled: true and fill credentials if the GHCR package is private.
