@@ -1,0 +1,18 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gallery-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gallery-backend
+spec:
+  entryPoints:
+    - websecure
+  tls:
+    certResolver: letsencrypt
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: gallery-backend
+          port: {{ .Values.service.port }}

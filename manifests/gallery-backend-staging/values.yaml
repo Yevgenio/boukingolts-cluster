@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/yevgenio/gallery-backend
+  # Updated automatically by GitHub Actions on each push to dev
+  tag: "1c7da1c"
+  pullPolicy: Always
+
+registry:
+  enabled: false
+  url: "ghcr.io"
+  username: ""
+  token: ""
+
+service:
+  type: ClusterIP
+  port: 5000
+
+ingress:
+  host: staging.api.boukingolts.art
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
