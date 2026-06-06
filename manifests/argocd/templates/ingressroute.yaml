@@ -7,10 +7,10 @@ spec:
   entryPoints:
     - websecure
   tls:
-    certResolver: letsencrypt
+    passthrough: true
   routes:
     - match: Host(`argocd.boukingolts.art`)
       kind: Rule
       services:
         - name: argocd-server
-          port: 80
+          port: 443
