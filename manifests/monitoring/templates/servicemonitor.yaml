@@ -16,3 +16,9 @@ spec:
     - port: http
       path: /metrics
       interval: 30s
+      metricRelabelings:
+        - sourceLabels: [status]
+          regex: "404"
+          action: replace
+          targetLabel: route
+          replacement: "/404"
