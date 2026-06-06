@@ -52,19 +52,19 @@
       "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{job=\"gallery-backend\", status=~\"5..\"}[5m])) or vector(0)",
-          "legendFormat": "errors/s",
+          "expr": "sum(rate(http_requests_total{job=\"gallery-backend\", status=~\"5..\"}[5m])) * 3600 or vector(0)",
+          "legendFormat": "errors/hr",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "red", "value": 0.01 }
+              { "color": "red", "value": 0.1 }
             ]
           }
         }
