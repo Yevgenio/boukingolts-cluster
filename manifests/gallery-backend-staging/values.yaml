@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/yevgenio/gallery-backend
   # Updated automatically by GitHub Actions on each push to dev
-  tag: "2b5c90d"
+  tag: "bb2f59a"
   pullPolicy: Always
 
 registry:
