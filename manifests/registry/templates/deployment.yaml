@@ -39,10 +39,6 @@ spec:
               value: {{ .Values.storage.s3RegionEndpoint | quote }}
             - name: REGISTRY_STORAGE_S3_BUCKET
               value: {{ .Values.storage.s3Bucket | quote }}
-            # rootdirectory prefixes all object keys — keeps container image
-            # layers under /registry/* and product images under their own keys.
-            - name: REGISTRY_STORAGE_S3_ROOTDIRECTORY
-              value: {{ .Values.storage.s3RootDirectory | quote }}
             # pathstyle=true is required for OCI Object Storage. AWS uses
             # virtual-hosted-style by default (bucket.endpoint.com/key), but
             # OCI's S3-compat endpoint only supports path-style (endpoint/bucket/key).

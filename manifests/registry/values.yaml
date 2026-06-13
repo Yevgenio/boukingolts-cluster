@@ -10,14 +10,14 @@ ingress:
   host: registry.boukingolts.art
 
 # OCI Object Storage S3-compatible config.
-# The registry shares the existing "gallery" bucket but writes all image
-# layers under the /registry prefix — keeping product images and container
-# layers physically separate within the same bucket.
+# Dedicated bucket for Docker image layers — fully separate from the "gallery"
+# bucket that stores artwork images, so lifecycle rules and IAM credentials
+# are independent.
 storage:
   s3Region: "il-jerusalem-1"
   s3RegionEndpoint: "https://axmemlyrscvh.compat.objectstorage.il-jerusalem-1.oraclecloud.com"
-  s3Bucket: "gallery"
-  s3RootDirectory: "/registry"
+  s3Bucket: "boukingolts-registry"
+  s3RootDirectory: ""
 
 resources:
   requests:
