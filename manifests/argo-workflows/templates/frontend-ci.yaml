@@ -47,7 +47,7 @@ spec:
                   value: "{{ "{{" }}workflow.parameters.commitSha}}"
         - - name: audit
             template: audit
-          - name: build
+        - - name: build
             template: build
             arguments:
               parameters:
@@ -111,6 +111,13 @@ spec:
 
             echo "=== Audit gate (high + critical) ==="
             npm audit --audit-level=high
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
         volumeMounts:
           - name: workspace
             mountPath: /workspace
@@ -128,8 +135,6 @@ spec:
           - --destination=registry.boukingolts.art/gallery-frontend:{{ "{{" }}inputs.parameters.shortSha}}
           - --no-push
           - --tar-path=/workspace/image.tar
-          - --cache=true
-          - --cache-repo=registry.boukingolts.art/gallery-frontend-cache
           - --build-arg=NEXT_PUBLIC_API_URL=https://api.boukingolts.art
           - --build-arg=NEXT_PUBLIC_IMAGE_URL=https://objectstorage.il-jerusalem-1.oraclecloud.com/n/axmemlyrscvh/b/gallery/o
         env:
