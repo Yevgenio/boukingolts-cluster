@@ -47,7 +47,7 @@ spec:
                   value: "{{ "{{" }}workflow.parameters.commitSha}}"
         - - name: audit
             template: audit
-        - - name: build
+          - name: build
             template: build
             arguments:
               parameters:
