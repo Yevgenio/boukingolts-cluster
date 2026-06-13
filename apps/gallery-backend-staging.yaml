@@ -14,7 +14,7 @@ spec:
         - values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: gallery-backend-staging
+    namespace: gallery-staging
   syncPolicy:
     automated:
       prune: true

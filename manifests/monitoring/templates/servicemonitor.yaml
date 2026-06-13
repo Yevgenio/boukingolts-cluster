@@ -8,10 +8,10 @@ metadata:
 spec:
   namespaceSelector:
     matchNames:
-      - gallery-backend
+      - gallery
   selector:
     matchLabels:
-      app: gallery-backend
+      app: backend
   endpoints:
     - port: http
       path: /metrics

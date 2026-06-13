@@ -19,7 +19,7 @@ ingress:
 
 env:
   # Server-side only — not baked into the image, overrides NEXT_PUBLIC_API_URL for SSR
-  apiUrl: http://gallery-backend.gallery-backend.svc.cluster.local:5000
+  apiUrl: http://backend:5000
 
 resources:
   requests:
