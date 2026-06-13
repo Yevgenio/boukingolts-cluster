@@ -1,0 +1,193 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: gallery-backend-ci
+  namespace: argo
+spec:
+  template:
+    serviceAccountName: argo-events-workflow-trigger
+
+  dependencies:
+    - name: push-dev
+      eventSourceName: gallery-github
+      eventName: gallery-backend
+      filters:
+        data:
+          - path: body.ref
+            type: string
+            value: ["refs/heads/dev"]
+
+  triggers:
+    - template:
+        name: backend-ci
+        conditions: "push-dev"
+        argoWorkflow:
+          group: argoproj.io
+          version: v1alpha1
+          resource: workflows
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: backend-ci-
+                namespace: argo
+              spec:
+                workflowTemplateRef:
+                  name: backend-ci
+                arguments:
+                  parameters:
+                    - name: commitSha
+                      value: "placeholder"
+                    - name: shortSha
+                      value: "placeholder"
+          parameters:
+            - src:
+                dependencyName: push-dev
+                dataKey: body.after
+              dest: spec.arguments.parameters.0.value
+            - src:
+                dependencyName: push-dev
+                dataTemplate: "{{ "{{" }} substr 0 7 .Input.body.after}}"   # first 7 chars
+              dest: spec.arguments.parameters.1.value
+      retryStrategy:
+        steps: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: gallery-backend-promote
+  namespace: argo
+spec:
+  template:
+    serviceAccountName: argo-events-workflow-trigger
+
+  dependencies:
+    - name: push-main
+      eventSourceName: gallery-github
+      eventName: gallery-backend
+      filters:
+        data:
+          - path: body.ref
+            type: string
+            value: ["refs/heads/main"]
+
+  triggers:
+    - template:
+        name: backend-promote
+        conditions: "push-main"
+        argoWorkflow:
+          group: argoproj.io
+          version: v1alpha1
+          resource: workflows
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: backend-promote-
+                namespace: argo
+              spec:
+                workflowTemplateRef:
+                  name: backend-promote
+      retryStrategy:
+        steps: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: gallery-frontend-ci
+  namespace: argo
+spec:
+  template:
+    serviceAccountName: argo-events-workflow-trigger
+
+  dependencies:
+    - name: push-dev
+      eventSourceName: gallery-github
+      eventName: gallery-frontend
+      filters:
+        data:
+          - path: body.ref
+            type: string
+            value: ["refs/heads/dev"]
+
+  triggers:
+    - template:
+        name: frontend-ci
+        conditions: "push-dev"
+        argoWorkflow:
+          group: argoproj.io
+          version: v1alpha1
+          resource: workflows
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: frontend-ci-
+                namespace: argo
+              spec:
+                workflowTemplateRef:
+                  name: frontend-ci
+                arguments:
+                  parameters:
+                    - name: commitSha
+                      value: "placeholder"
+                    - name: shortSha
+                      value: "placeholder"
+          parameters:
+            - src:
+                dependencyName: push-dev
+                dataKey: body.after
+              dest: spec.arguments.parameters.0.value
+            - src:
+                dependencyName: push-dev
+                dataTemplate: "{{ "{{" }} substr 0 7 .Input.body.after}}"   # first 7 chars
+              dest: spec.arguments.parameters.1.value
+      retryStrategy:
+        steps: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: gallery-frontend-promote
+  namespace: argo
+spec:
+  template:
+    serviceAccountName: argo-events-workflow-trigger
+
+  dependencies:
+    - name: push-main
+      eventSourceName: gallery-github
+      eventName: gallery-frontend
+      filters:
+        data:
+          - path: body.ref
+            type: string
+            value: ["refs/heads/main"]
+
+  triggers:
+    - template:
+        name: frontend-promote
+        conditions: "push-main"
+        argoWorkflow:
+          group: argoproj.io
+          version: v1alpha1
+          resource: workflows
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: frontend-promote-
+                namespace: argo
+              spec:
+                workflowTemplateRef:
+                  name: frontend-promote
+      retryStrategy:
+        steps: 3

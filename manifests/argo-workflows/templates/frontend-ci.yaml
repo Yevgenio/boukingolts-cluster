@@ -1,0 +1,221 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: frontend-ci
+  namespace: argo
+  labels:
+    app: gallery-frontend
+spec:
+  entrypoint: pipeline
+  serviceAccountName: argo-workflow
+
+  arguments:
+    parameters:
+      - name: commitSha   # full SHA — checkout + Kaniko cache key
+        value: ""
+      - name: shortSha    # first 7 chars — image tag
+        value: ""
+
+  # 4Gi covers source + node_modules (devDeps included) + image.tar + Trivy DB.
+  # Next.js webpack build is heavier than backend — needs the extra headroom.
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 4Gi
+
+  volumes:
+    - name: registry-creds
+      secret:
+        secretName: registry-push-creds
+        items:
+          - key: .dockerconfigjson
+            path: config.json  # Kaniko and crane look for config.json at DOCKER_CONFIG/
+
+  templates:
+    - name: pipeline
+      steps:
+        - - name: clone
+            template: clone
+            arguments:
+              parameters:
+                - name: commitSha
+                  value: "{{ "{{" }}workflow.parameters.commitSha}}"
+        - - name: audit
+            template: audit
+          - name: build
+            template: build
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+        - - name: scan
+            template: scan
+        - - name: push
+            template: push
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+        - - name: deploy-staging
+            template: deploy-staging
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+
+    - name: clone
+      inputs:
+        parameters:
+          - name: commitSha
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Cloning boukingolts-next at {{ "{{" }}inputs.parameters.commitSha}} ==="
+            git clone https://github.com/Yevgenio/boukingolts-next.git /workspace/src
+            cd /workspace/src
+            git checkout {{ "{{" }}inputs.parameters.commitSha}}
+            echo "Clone complete"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    - name: audit
+      container:
+        image: node:24-slim
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Installing all dependencies (devDeps needed by webpack) ==="
+            cd /workspace/src
+            npm ci
+
+            echo "=== Vulnerability summary ==="
+            npm audit --json 2>/dev/null | node -e "
+              process.stdin.resume(); let d='';
+              process.stdin.on('data', c => d+=c);
+              process.stdin.on('end', () => {
+                try {
+                  const v = JSON.parse(d).metadata?.vulnerabilities||{};
+                  ['critical','high','moderate','low'].forEach(s =>
+                    v[s] !== undefined && console.log(s+': '+v[s]));
+                } catch(e) {}
+              });
+            " || true
+
+            echo "=== Audit gate (high + critical) ==="
+            npm audit --audit-level=high
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # NEXT_PUBLIC_* vars are baked in at build time and are the same across all envs.
+    # Server-side API calls use the k8s-internal apiUrl from values.yaml instead.
+    - name: build
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+          - --context=dir:///workspace/src
+          - --destination=registry.boukingolts.art/gallery-frontend:{{ "{{" }}inputs.parameters.shortSha}}
+          - --no-push
+          - --tar-path=/workspace/image.tar
+          - --cache=true
+          - --cache-repo=registry.boukingolts.art/gallery-frontend-cache
+          - --build-arg=NEXT_PUBLIC_API_URL=https://api.boukingolts.art
+          - --build-arg=NEXT_PUBLIC_IMAGE_URL=https://objectstorage.il-jerusalem-1.oraclecloud.com/n/axmemlyrscvh/b/gallery/o
+        env:
+          - name: DOCKER_CONFIG
+            value: /kaniko/.docker
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+          - name: registry-creds
+            mountPath: /kaniko/.docker
+            readOnly: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 3000m
+            memory: 4Gi
+
+    - name: scan
+      container:
+        image: aquasec/trivy:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Trivy scan (HIGH + CRITICAL, informational) ==="
+            trivy image --input /workspace/image.tar \
+              --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --format table
+
+            echo "=== Trivy gate (CRITICAL — blocks pipeline) ==="
+            trivy image --input /workspace/image.tar \
+              --severity CRITICAL --ignore-unfixed --exit-code 1 --format table
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    - name: push
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: gcr.io/go-containerregistry/crane:latest
+        args:
+          - push
+          - /workspace/image.tar
+          - registry.boukingolts.art/gallery-frontend:{{ "{{" }}inputs.parameters.shortSha}}
+        env:
+          - name: DOCKER_CONFIG
+            value: /tmp/docker
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+          - name: registry-creds
+            mountPath: /tmp/docker
+            readOnly: true
+
+    - name: deploy-staging
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            set -e
+            echo "=== Deploying {{ "{{" }}inputs.parameters.shortSha}} to staging ==="
+            git clone \
+              https://x-access-token:${GITOPS_TOKEN}@github.com/Yevgenio/boukingolts-cluster.git \
+              /cluster
+            cd /cluster
+            sed -i 's/tag: "[^"]*"/tag: "{{ "{{" }}inputs.parameters.shortSha}}"/' \
+              manifests/gallery-frontend-staging/values.yaml
+            git config user.email "argo@boukingolts.art"
+            git config user.name "Argo Workflows"
+            git add manifests/gallery-frontend-staging/values.yaml
+            if git diff --cached --quiet; then
+              echo "Staging already at {{ "{{" }}inputs.parameters.shortSha}}, nothing to do"
+              exit 0
+            fi
+            git commit -m "deploy: gallery-frontend {{ "{{" }}inputs.parameters.shortSha}} to staging"
+            git push
+            echo "Staging updated — ArgoCD will sync shortly"
+        env:
+          - name: GITOPS_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: argo-secrets
+                key: GITOPS_TOKEN

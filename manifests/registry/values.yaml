@@ -1,0 +1,28 @@
+image:
+  repository: registry
+  tag: "2"
+  pullPolicy: IfNotPresent
+
+service:
+  port: 5000
+
+ingress:
+  host: registry.boukingolts.art
+
+# OCI Object Storage S3-compatible config.
+# The registry shares the existing "gallery" bucket but writes all image
+# layers under the /registry prefix — keeping product images and container
+# layers physically separate within the same bucket.
+storage:
+  s3Region: "il-jerusalem-1"
+  s3RegionEndpoint: "https://axmemlyrscvh.compat.objectstorage.il-jerusalem-1.oraclecloud.com"
+  s3Bucket: "gallery"
+  s3RootDirectory: "/registry"
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 256Mi

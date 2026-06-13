@@ -1,0 +1,5 @@
+apiVersion: v2
+name: argo-events-config
+description: EventSource, Sensor and webhook IngressRoute for gallery CI triggers
+type: application
+version: 0.1.0

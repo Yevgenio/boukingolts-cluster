@@ -1,0 +1,64 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-workflows
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-workflows
+    # Check https://github.com/argoproj/argo-helm/releases for latest
+    targetRevision: "0.44.0"
+    helm:
+      values: |
+        controller:
+          containerRuntimeExecutor: emissary
+          resources:
+            requests:
+              cpu: 50m
+              memory: 200Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+        server:
+          enabled: true
+          extraArgs:
+            - --auth-mode=server
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 256Mi
+        workflow:
+          serviceAccount:
+            create: true
+            name: argo-workflow
+          rbac:
+            create: true
+        workflowDefaults:
+          spec:
+            podGC:
+              strategy: OnWorkflowSuccess
+            ttlStrategy:
+              secondsAfterSuccess: 86400
+              secondsAfterFailure: 604800
+        executor:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

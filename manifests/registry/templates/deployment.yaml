@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  # Single replica is fine. Registry is stateless — all state lives in OCI
+  # Object Storage. If the pod restarts, in-flight pushes fail and the client
+  # retries; no data is lost.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: registry
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 5000
+
+          env:
+            # --- Storage backend: S3-compatible (OCI Object Storage) ---
+            # REGISTRY_STORAGE=s3 switches from the default filesystem backend
+            # to the S3 driver. All image layers are stored as objects.
+            - name: REGISTRY_STORAGE
+              value: s3
+            - name: REGISTRY_STORAGE_S3_REGION
+              value: {{ .Values.storage.s3Region | quote }}
+            # regionendpoint overrides the AWS endpoint — required for any
+            # non-AWS S3-compatible service (OCI, MinIO, etc.)
+            - name: REGISTRY_STORAGE_S3_REGIONENDPOINT
+              value: {{ .Values.storage.s3RegionEndpoint | quote }}
+            - name: REGISTRY_STORAGE_S3_BUCKET
+              value: {{ .Values.storage.s3Bucket | quote }}
+            # rootdirectory prefixes all object keys — keeps container image
+            # layers under /registry/* and product images under their own keys.
+            - name: REGISTRY_STORAGE_S3_ROOTDIRECTORY
+              value: {{ .Values.storage.s3RootDirectory | quote }}
+            # pathstyle=true is required for OCI Object Storage. AWS uses
+            # virtual-hosted-style by default (bucket.endpoint.com/key), but
+            # OCI's S3-compat endpoint only supports path-style (endpoint/bucket/key).
+            - name: REGISTRY_STORAGE_S3_PATHSTYLE
+              value: "true"
+            # v4auth=true enforces SigV4 signing — OCI does not support SigV2.
+            - name: REGISTRY_STORAGE_S3_V4AUTH
+              value: "true"
+            # Credentials come from the SealedSecret (re-uses the same OCI
+            # IAM credentials as the backend, re-sealed for this namespace).
+            - name: REGISTRY_STORAGE_S3_ACCESSKEY
+              valueFrom:
+                secretKeyRef:
+                  name: registry-secret
+                  key: S3_ACCESS_KEY_ID
+            - name: REGISTRY_STORAGE_S3_SECRETKEY
+              valueFrom:
+                secretKeyRef:
+                  name: registry-secret
+                  key: S3_SECRET_ACCESS_KEY
+
+            # --- Auth: htpasswd ---
+            # htpasswd is the simplest stateless auth for a single-team registry.
+            # Alternatives considered: token auth (requires an external auth
+            # service) and no auth (unacceptable — registry is public-facing via
+            # Traefik). htpasswd is bcrypt-hashed and sufficient here.
+            - name: REGISTRY_AUTH
+              value: htpasswd
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Registry Realm"
+            # The htpasswd file is mounted from the secret below.
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: /auth/htpasswd
+
+            # Random secret used to sign registry HTTP state cookies.
+            # Must be set; rotatable without losing data.
+            - name: REGISTRY_HTTP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: registry-secret
+                  key: REGISTRY_HTTP_SECRET
+
+            - name: REGISTRY_HTTP_ADDR
+              value: ":5000"
+
+            # Disable redirect for S3 layer downloads. Without this, the
+            # registry redirects clients to a pre-signed OCI URL for each
+            # layer blob. That works fine for external clients, but Kaniko and
+            # crane running inside the cluster skip TLS verification on
+            # redirected URLs in some configurations. Disabling redirect means
+            # the registry proxies blobs through itself — slightly more traffic,
+            # but simpler and more reliable for in-cluster use.
+            - name: REGISTRY_STORAGE_REDIRECT_DISABLE
+              value: "true"
+
+          volumeMounts:
+            # Mount the htpasswd file from the secret.
+            # The secret has a key "htpasswd" whose value is the full htpasswd
+            # file content (one line per user: "user:$2y$...").
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          readinessProbe:
+            tcpSocket:
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            tcpSocket:
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+
+      volumes:
+        - name: auth
+          secret:
+            secretName: registry-secret
+            items:
+              - key: htpasswd
+                path: htpasswd

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gallery-frontend-staging
+description: Gallery Next.js frontend (staging)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

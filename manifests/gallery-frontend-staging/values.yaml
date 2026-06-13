@@ -1,0 +1,30 @@
+replicaCount: 1
+
+image:
+  repository: registry.boukingolts.art/gallery-frontend
+  # Updated automatically by Argo Workflows on each push to dev
+  tag: "placeholder"
+  pullPolicy: Always
+
+registry:
+  enabled: true
+  url: "registry.boukingolts.art"
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  host: staging.boukingolts.art
+
+env:
+  # Server-side only — not baked into the image, overrides NEXT_PUBLIC_API_URL for SSR
+  apiUrl: http://gallery-backend.gallery-backend-staging.svc.cluster.local:5000
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

@@ -1,0 +1,225 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: backend-ci
+  namespace: argo
+  labels:
+    app: gallery-backend
+spec:
+  entrypoint: pipeline
+  serviceAccountName: argo-workflow
+
+  arguments:
+    parameters:
+      - name: commitSha   # full SHA — checkout + Kaniko cache key
+        value: ""
+      - name: shortSha    # first 7 chars — image tag
+        value: ""
+
+  # PVC shared across steps — each step runs in a separate pod so emptyDir won't work.
+  # local-path is k3s's default StorageClass (local disk, no network overhead).
+  # 3Gi covers source + node_modules + image.tar + Trivy DB.
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 3Gi
+
+  volumes:
+    - name: registry-creds
+      secret:
+        secretName: registry-push-creds
+        items:
+          - key: .dockerconfigjson
+            path: config.json  # Kaniko and crane look for config.json at DOCKER_CONFIG/
+
+  templates:
+    - name: pipeline
+      steps:
+        - - name: clone
+            template: clone
+            arguments:
+              parameters:
+                - name: commitSha
+                  value: "{{ "{{" }}workflow.parameters.commitSha}}"
+        - - name: audit
+            template: audit
+          - name: build
+            template: build
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+        - - name: scan
+            template: scan
+        - - name: push
+            template: push
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+        - - name: deploy-staging
+            template: deploy-staging
+            arguments:
+              parameters:
+                - name: shortSha
+                  value: "{{ "{{" }}workflow.parameters.shortSha}}"
+
+    - name: clone
+      inputs:
+        parameters:
+          - name: commitSha
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Cloning boukingolts-backend at {{ "{{" }}inputs.parameters.commitSha}} ==="
+            git clone https://github.com/Yevgenio/boukingolts-backend.git /workspace/src
+            cd /workspace/src
+            git checkout {{ "{{" }}inputs.parameters.commitSha}}
+            echo "Clone complete"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    - name: audit
+      container:
+        image: node:24-slim
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Installing production dependencies ==="
+            cd /workspace/src
+            npm ci --omit=dev
+
+            echo "=== Vulnerability summary ==="
+            npm audit --json 2>/dev/null | node -e "
+              process.stdin.resume(); let d='';
+              process.stdin.on('data', c => d+=c);
+              process.stdin.on('end', () => {
+                try {
+                  const v = JSON.parse(d).metadata?.vulnerabilities||{};
+                  ['critical','high','moderate','low'].forEach(s =>
+                    v[s] !== undefined && console.log(s+': '+v[s]));
+                } catch(e) {}
+              });
+            " || true
+
+            echo "=== Audit gate (high + critical) ==="
+            npm audit --audit-level=high --omit=dev
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # Kaniko builds images without a Docker daemon — safe in Kubernetes.
+    # --cache=true reuses unchanged layers across builds (~30s vs ~5min cold).
+    - name: build
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+          - --context=dir:///workspace/src
+          - --destination=registry.boukingolts.art/gallery-backend:{{ "{{" }}inputs.parameters.shortSha}}
+          - --no-push
+          - --tar-path=/workspace/image.tar
+          - --cache=true
+          - --cache-repo=registry.boukingolts.art/gallery-backend-cache
+        env:
+          - name: DOCKER_CONFIG
+            value: /kaniko/.docker
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+          - name: registry-creds
+            mountPath: /kaniko/.docker
+            readOnly: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1500m
+            memory: 3Gi
+
+    # Two Trivy passes: HIGH+CRITICAL informational, then CRITICAL-only gate.
+    # Splitting avoids blocking on HIGH CVEs that have no upstream fix yet.
+    - name: scan
+      container:
+        image: aquasec/trivy:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Trivy scan (HIGH + CRITICAL, informational) ==="
+            trivy image --input /workspace/image.tar \
+              --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --format table
+
+            echo "=== Trivy gate (CRITICAL — blocks pipeline) ==="
+            trivy image --input /workspace/image.tar \
+              --severity CRITICAL --ignore-unfixed --exit-code 1 --format table
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # crane pushes a pre-built OCI tarball without needing a Docker daemon.
+    - name: push
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: gcr.io/go-containerregistry/crane:latest
+        args:
+          - push
+          - /workspace/image.tar
+          - registry.boukingolts.art/gallery-backend:{{ "{{" }}inputs.parameters.shortSha}}
+        env:
+          - name: DOCKER_CONFIG
+            value: /tmp/docker
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+          - name: registry-creds
+            mountPath: /tmp/docker
+            readOnly: true
+
+    # Updates the cluster repo tag and pushes. ArgoCD detects the change and syncs —
+    # no cluster credentials needed here, only a git PAT.
+    - name: deploy-staging
+      inputs:
+        parameters:
+          - name: shortSha
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            set -e
+            echo "=== Deploying {{ "{{" }}inputs.parameters.shortSha}} to staging ==="
+            git clone \
+              https://x-access-token:${GITOPS_TOKEN}@github.com/Yevgenio/boukingolts-cluster.git \
+              /cluster
+            cd /cluster
+            sed -i 's/tag: "[^"]*"/tag: "{{ "{{" }}inputs.parameters.shortSha}}"/' \
+              manifests/gallery-backend-staging/values.yaml
+            git config user.email "argo@boukingolts.art"
+            git config user.name "Argo Workflows"
+            git add manifests/gallery-backend-staging/values.yaml
+            if git diff --cached --quiet; then
+              echo "Staging already at {{ "{{" }}inputs.parameters.shortSha}}, nothing to do"
+              exit 0
+            fi
+            git commit -m "deploy: gallery-backend {{ "{{" }}inputs.parameters.shortSha}} to staging"
+            git push
+            echo "Staging updated — ArgoCD will sync shortly"
+        env:
+          - name: GITOPS_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: argo-secrets
+                key: GITOPS_TOKEN

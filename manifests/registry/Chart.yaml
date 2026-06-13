@@ -1,0 +1,5 @@
+apiVersion: v2
+name: registry
+description: Self-hosted Docker Registry v2 backed by OCI Object Storage
+type: application
+version: 0.1.0

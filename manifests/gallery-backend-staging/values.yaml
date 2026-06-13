@@ -1,16 +1,14 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/yevgenio/gallery-backend
-  # Updated automatically by GitHub Actions on each push to dev
+  repository: registry.boukingolts.art/gallery-backend
+  # Updated automatically by Argo Workflows on each push to dev
   tag: "d7862f5"
   pullPolicy: Always
 
 registry:
-  enabled: false
-  url: "ghcr.io"
-  username: ""
-  token: ""
+  enabled: true
+  url: "registry.boukingolts.art"
 
 service:
   type: ClusterIP
