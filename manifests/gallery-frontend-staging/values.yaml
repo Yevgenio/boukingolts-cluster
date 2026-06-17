@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: registry.boukingolts.art/gallery-frontend
   # Updated automatically by Argo Workflows on each push to dev
-  tag: "placeholder"
+  tag: "c9c2ee7"
   pullPolicy: Always
 
 registry:
