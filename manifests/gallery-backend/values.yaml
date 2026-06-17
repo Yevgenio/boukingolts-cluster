@@ -3,7 +3,7 @@ replicaCount: 2
 image:
   repository: registry.boukingolts.art/gallery-backend
   # Updated automatically by Argo Workflows on each push to main
-  tag: "b7cc1c9"
+  tag: "d1f01e8"
   pullPolicy: Always
 
 registry:
