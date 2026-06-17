@@ -15,7 +15,7 @@ ingress:
 # are independent.
 storage:
   s3Region: "il-jerusalem-1"
-  s3RegionEndpoint: "https://axmemlyrscvh.compat.objectstorage.il-jerusalem-1.oraclecloud.com"
+  s3RegionEndpoint: "https://axftwemw5l5c.compat.objectstorage.il-jerusalem-1.oraclecloud.com"
   s3Bucket: "boukingolts-registry"
   s3RootDirectory: ""
 
