@@ -30,6 +30,11 @@ spec:
               value: production
             - name: API_URL
               value: {{ .Values.env.apiUrl }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: frontend-secret
+                  key: JWT_SECRET
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
