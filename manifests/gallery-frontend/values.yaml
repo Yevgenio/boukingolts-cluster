@@ -16,6 +16,10 @@ service:
 
 ingress:
   host: boukingolts.art
+  extraHosts:
+    - elena.boukingolts.art
+    - alexey.boukingolts.art
+    - archive.boukingolts.art
 
 env:
   # Server-side only — not baked into the image, overrides NEXT_PUBLIC_API_URL for SSR

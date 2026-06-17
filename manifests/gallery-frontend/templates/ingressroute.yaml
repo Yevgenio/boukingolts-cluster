@@ -11,7 +11,7 @@ spec:
   tls:
     certResolver: letsencrypt
   routes:
-    - match: Host(`{{ .Values.ingress.host }}`) || Host(`www.{{ .Values.ingress.host }}`)
+    - match: Host(`{{ .Values.ingress.host }}`) || Host(`www.{{ .Values.ingress.host }}`){{- range .Values.ingress.extraHosts }} || Host(`{{ . }}`){{- end }}
       kind: Rule
       services:
         - name: {{ .Release.Name }}
